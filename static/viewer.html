@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>rrweb Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+    }
+
+    h2 {
+      text-align: center;
+      margin-top: 1rem;
+    }
+
+    #replay {
+      border: 2px solid #444;
+      width: 90%;
+      height: 600px;
+      margin: 1rem auto;
+      position: relative;
+      overflow: hidden;
+
+    }
+
+    /* Style the iframe used by rrweb */
+    #replay iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      pointer-events: none;
+      /* Optional: avoid interactions */
+
+      /*the cursor was not showing so adding a custom css for the cursor*/
+    }
+
+    .replayer-mouse {
+      width: 12px !important;
+      height: 12px !important;
+      position: absolute !important;
+      background-color: black !important; /* black dot */
+      border-radius: 50% !important; /* round */
+      cursor: pointer !important;
+      pointer-events: none !important;
+      box-shadow: none !important;
+      z-index: 999999 !important;
+    }
+
+    
+    
+  </style>
+</head>
+
+<body>
+  <h2>Live Viewer</h2>
+  <div id="replay"></div>
+
+  <script>
+    const events = [];
+    let replayer = null;
+    let snapshotReceived = false;
+    let type2 = null;
+    const socket = new WebSocket("ws://localhost:8000/ws/view");
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log("📦 Viewer received event:", data);
+
+      events.push(data);
+      if (data.type ===2){
+        type2 = data
+      }
+      if (data.type === 0){
+        type0 = data
+      }
+
+      if (!snapshotReceived && data.type === 2) {
+        snapshotReceived = true;
+        console.log("📸 Snapshot received. Initializing Replayer...");
+
+        replayer = new rrweb.Replayer(events, {
+          root: document.getElementById('replay'),
+          liveMode: true,
+          UNSAFE_replayIframe: true, //important 
+          showCursor: true,
+        });
+        const BUFFER_MS = 1000;
+        replayer.startLive(Date.now() - BUFFER_MS);
+        return;
+      }
+
+      if (replayer) {
+        replayer.addEvent(data);
+      }
+    };
+  </script>
+</body>
+
+</html>

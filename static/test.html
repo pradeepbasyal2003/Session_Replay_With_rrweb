@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>rrweb Test</title>
+  <!-- Load rrweb from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"></script>
+</head>
+
+<body>
+  <h1>Hello from rrweb!</h1>
+  <p>Try typing here or clicking things:</p>
+  <input type="text" placeholder="Type something..." />
+
+  <h2>Chatbot Test</h2>
+  <div id="chatbox"></div>
+
+  <input type="text" id="messageInput" placeholder="Type a message..." />
+  <button onclick="sendMessage()">Send</button>
+
+  <script>
+    let events = []
+    const socket = new WebSocket("ws://localhost:8000/ws/record");
+
+    socket.onopen = () => {
+      console.log("✅ WebSocket connected");
+
+      let hasSentMeta = false;
+
+      const stopFn = rrweb.record({
+        emit(event) {
+          console.log("📤 Event:", event);
+          if (event.type === 0) {
+            hasSentMeta = true;
+            console.log("✅ type: 0 Meta received");
+          }
+          socket.send(JSON.stringify(event));
+          events.push(event)
+        },
+        recordCanvas: true,
+        sampling: {
+          mousemove: true,
+          mouseInteraction: true, // ✅ this includes clicks
+        },
+      });
+
+      // Fallback to force full snapshot
+      setTimeout(() => {
+        console.log("⏱ Forcing full snapshot...");
+        stopFn.takeFullSnapshot?.();
+        if (!hasSentMeta) {
+          // If Meta still not sent, fake one
+          const fakeMeta = {
+            type: 0,
+            data: {
+              href: window.location.href,
+              width: window.innerWidth,
+              height: window.innerHeight
+            },
+            timestamp: Date.now()
+          };
+          console.log("⚠️ Faking missing type: 0");
+          socket.send(JSON.stringify(fakeMeta));
+        }
+      }, 1500);
+    };
+    
+
+    const chatbox = document.getElementById('chatbox');
+    const messageInput = document.getElementById('messageInput');
+
+    // Simulate bot response
+    function botReply(text) {
+      const msg = document.createElement('div');
+      msg.className = 'bot';
+      msg.innerText = "🤖 Bot: " + text;
+      chatbox.appendChild(msg);
+
+      // Add custom event for bot response
+      rrweb.record.addCustomEvent({
+        tag: 'bot-message',
+        data: {
+          text: text,
+          timestamp: Date.now()
+        }
+      });
+    }
+
+    // Send user message
+    function sendMessage() {
+      const userText = messageInput.value.trim();
+      if (!userText) return;
+
+      // Add to UI
+      const userMsg = document.createElement('div');
+      userMsg.className = 'user';
+      userMsg.innerText = "🧑 You: " + userText;
+      chatbox.appendChild(userMsg);
+
+      // Add custom event for user message
+      rrweb.record.addCustomEvent({
+        tag: 'user-message',
+        data: {
+          text: userText,
+          timestamp: Date.now()
+        }
+      });
+
+      messageInput.value = '';
+    }
+
+    // Function to send the events to the FastAPI backend
+    function sendEvents() {
+      if (events.length > 0) {
+        fetch("http://localhost:8000/record", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(events),
+        })
+          .then(() => alert("Session sent!"))
+          .catch(err => alert("Error: " + err));
+      }
+    }
+
+    // Send after 15 seconds or when the tab is closed
+    //setTimeout(sendEvents, 15000);
+    window.addEventListener("beforeunload", sendEvents);
+  </script>
+</body>
+
+</html>
